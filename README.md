@@ -1,0 +1,2 @@
+# scl
+Straight-forward changelog
