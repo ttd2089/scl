@@ -1,4 +1,3 @@
-
 use reqwest::Error;
 use serde::Deserialize;
 
@@ -9,7 +8,6 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-
     pub fn new(client: &'a reqwest::Client, owner: &'a str, repo: &'a str) -> Self {
         Self {
             client,
@@ -19,14 +17,16 @@ impl<'a> Context<'a> {
     }
 
     pub async fn get_release(&self, release: &str) -> Result<Release, Error> {
-
         let request_url = format!(
             "https://api.github.com/repos/{owner}/{repo}/releases/{release}",
             owner = self.owner,
             repo = self.repo,
-            release = release);
+            release = release
+        );
 
-        let response = self.client.get(request_url)
+        let response = self
+            .client
+            .get(request_url)
             .header("User-Agent", "scl")
             .send()
             .await?;
@@ -37,17 +37,16 @@ impl<'a> Context<'a> {
     }
 
     pub async fn compare_commits(&self, base: &str, head: &str) -> Result<CommitComparison, Error> {
-
         let request_url = format!(
             "https://api.github.com/repos/{owner}/{repo}/compare/{basehead}",
             owner = self.owner,
             repo = self.repo,
-            basehead = format!(
-                "{base}...{head}",
-                base = base,
-                head = head));
+            basehead = format!("{base}...{head}", base = base, head = head)
+        );
 
-        let response = self.client.get(request_url)
+        let response = self
+            .client
+            .get(request_url)
             .header("User-Agent", "scl")
             .send()
             .await?;
