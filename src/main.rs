@@ -75,10 +75,6 @@ fn print_changelog(commits: &Vec<conventional::Commit>) {
     let mut categories: HashMap<String, Vec<&conventional::Commit>> = HashMap::new();
 
     for commit in commits {
-        if commit.breaking() {
-            continue;
-        }
-
         let key = if commit.breaking() {
             "breaking".to_owned()
         } else {
