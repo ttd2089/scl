@@ -31,8 +31,8 @@ async fn main() -> Result<(), Error> {
     let client = reqwest::Client::new();
     let context = github::Context::new(
         &client,
-        &matches.get_one::<String>("owner").unwrap(),
-        &matches.get_one::<String>("repo").unwrap(),
+        matches.get_one::<String>("owner").unwrap(),
+        matches.get_one::<String>("repo").unwrap(),
     );
 
     let release = matches
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Error> {
     let comparison = context
         .compare_commits(
             &release.target_commitish,
-            &matches.get_one::<String>("target").unwrap(),
+            matches.get_one::<String>("target").unwrap(),
         )
         .await?;
 
@@ -88,7 +88,7 @@ fn print_changelog(commits: &Vec<conventional::Commit>) {
         categories
             .entry(key)
             .and_modify(|x| x.push(commit))
-            .or_insert_with(|| Vec::new());
+            .or_insert_with(Vec::new);
     }
 
     for (category, title) in [
