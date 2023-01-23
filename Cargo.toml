@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.1.1", features = ["cargo", "env", "unicode", "wrap_help"] }
+conventional = "0.5.0"
 reqwest = { version = "0.11.13", features = ["json"]}
 serde = { version = "1.0.152", features = ["derive"]}
 tokio = { version = "1.24.2", features = ["rt-multi-thread", "macros"]}
