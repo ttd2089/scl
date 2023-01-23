@@ -1,6 +1,9 @@
 mod github;
 
+use std::collections::HashMap;
+
 use clap::{arg, command, Command};
+use conventional::Simple;
 use reqwest::Error;
 
 #[tokio::main]
@@ -43,8 +46,70 @@ async fn main() -> Result<(), Error> {
             &release.target_commitish,
             &matches.get_one::<String>("target").unwrap(),
         )
-        .await;
+        .await?;
 
-    println!("{:?}", comparison);
+    let commits = comparison
+        .commits
+        .iter()
+        .filter_map(|x| conventional::Commit::new(&x.commit.message).ok())
+        .filter(is_relevant_commit)
+        .collect::<Vec<_>>();
+
+    match matches.subcommand() {
+        Some(("version", _)) => println!("You typed version :D"),
+        Some(("changelog", _)) => print_changelog(&commits),
+        _ => unreachable!("Oh nooo"),
+    };
+
+    // let commit = conventional::Commit::new("strang").expect("Should be here");
+
+    // println!("{:?}", comparison);
     Ok(())
+}
+
+fn is_relevant_commit(commit: &conventional::Commit) -> bool {
+    commit.type_() == "feat" || commit.type_() == "fix"
+}
+
+fn print_changelog(commits: &Vec<conventional::Commit>) {
+    let mut categories: HashMap<String, Vec<&conventional::Commit>> = HashMap::new();
+
+    for commit in commits {
+        if commit.breaking() {
+            continue;
+        }
+
+        let key = if commit.breaking() {
+            "breaking".to_owned()
+        } else {
+            commit.type_().to_owned()
+        };
+
+        categories
+            .entry(key)
+            .and_modify(|x| x.push(commit))
+            .or_insert_with(|| Vec::new());
+    }
+
+    for (category, title) in [
+        ("breaking", "breaking changes"),
+        ("feat", "features"),
+        ("fix", "fixes"),
+    ] {
+        print_category(&categories, category, title);
+        println!();
+    }
+}
+
+fn print_category(
+    hash_map: &HashMap<String, Vec<&conventional::Commit>>,
+    category_name: &str,
+    title: &str,
+) {
+    if let Some(breaking) = hash_map.get(category_name) {
+        println!("{} stuff!\n", title);
+        for commit in breaking.iter() {
+            println!("{subject}", subject = commit.description())
+        }
+    }
 }
