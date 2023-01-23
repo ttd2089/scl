@@ -61,9 +61,6 @@ async fn main() -> Result<(), Error> {
         _ => unreachable!("Oh nooo"),
     };
 
-    // let commit = conventional::Commit::new("strang").expect("Should be here");
-
-    // println!("{:?}", comparison);
     Ok(())
 }
 
@@ -88,9 +85,9 @@ fn print_changelog(commits: &Vec<conventional::Commit>) {
     }
 
     for (category, title) in [
-        ("breaking", "breaking changes"),
-        ("feat", "features"),
-        ("fix", "fixes"),
+        ("breaking", "BREAKING CHANGES"),
+        ("feat", "Features"),
+        ("fix", "Bug Fixes"),
     ] {
         print_category(&categories, category, title);
         println!();
@@ -103,7 +100,7 @@ fn print_category(
     title: &str,
 ) {
     if let Some(breaking) = hash_map.get(category_name) {
-        println!("{} stuff!\n", title);
+        println!("{}:\n", title);
         for commit in breaking.iter() {
             println!("{subject}", subject = commit.description())
         }
