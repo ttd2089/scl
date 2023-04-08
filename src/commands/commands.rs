@@ -1,12 +1,11 @@
 use std::error::Error;
 use std::ffi::OsString;
 
-pub(crate) trait Command {
-
-    fn run<I, T>(&self, itr: I) -> ResultFromThoseBois<I, T>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<OsString> + Clone;
+pub(crate) trait Command<I,T>     where
+I: IntoIterator<Item = T>,
+T: Into<OsString> + Clone
+{
+    fn run(&self, itr: I) -> Result<(), Box<dyn Error>>;
 }
 
 pub(crate) struct ResultFromThoseBois<I, T>
@@ -33,21 +32,23 @@ where
     ParseFn: Fn(&clap::ArgMatches) -> Options,
     RunFn: Fn(&Options) -> Result<(), Box<dyn Error>> {
 
-    build_command: BuildFn,
-    parse_options: ParseFn,
-    run: RunFn,
+    // Just making pub for now 
+    pub build_command: BuildFn,
+    pub parse_options: ParseFn,
+    pub run: RunFn,
 }
 
-impl<Options, BuildFn, ParseFn, RunFn> Command for ClapCommand<Options, BuildFn, ParseFn, RunFn>
+impl<I,T,O,B,P,R> Command<I,T> for ClapCommand<O,B,P,R>
 where
-    BuildFn: Fn() -> clap::Command,
-    ParseFn: Fn(&clap::ArgMatches) -> Options,
-    RunFn: Fn(&Options) -> Result<(), Box<dyn Error>> {
-
-    fn run<I, T>(&self, itr: I) -> Result<(), Box<dyn Error>> {
-            
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+    B: Fn() -> clap::Command,
+    P: Fn(&clap::ArgMatches) -> O,
+    R: Fn(&O) -> Result<(), Box<dyn Error>>
+{
+    fn run(&self, iter: I) -> Result<(), Box<dyn Error>> {
         let clap_command = (self.build_command)();
-        let matches = clap_command.try_get_matches_from(itr)?;
+        let matches = clap_command.try_get_matches_from(iter)?;
         let opts = (self.parse_options)(&matches);
         (self.run)(&opts)
     }
