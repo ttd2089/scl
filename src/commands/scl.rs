@@ -16,8 +16,8 @@ impl SclOptions {
 
 pub(crate) fn new<Iter, Item>() -> Box<dyn Command<Iter=Iter, Item=Item>>
 where
-    Iter: IntoIterator<Item = Item>,
-    Item: Into<OsString> + Clone, {
+    Iter: IntoIterator<Item = Item> + 'static,
+    Item: Into<OsString> + Clone + 'static, {
         
     Box::new(ClapCommand::new(
         build_scl_clap_command,
