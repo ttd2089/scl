@@ -14,7 +14,7 @@ impl SclOptions {
     }
 }
 
-pub(crate) fn new<Iter, Item>() -> Box<dyn Command<Iter, Item>>
+pub(crate) fn new<Iter, Item>() -> Box<dyn Command<Iter=Iter, Item=Item>>
 where
     Iter: IntoIterator<Item = Item>,
     Item: Into<OsString> + Clone, {

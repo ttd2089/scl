@@ -6,12 +6,24 @@ mod changelog;
 use std::error::Error;
 use std::ffi::OsString;
 
-pub(crate) trait Command<Iter, Item>
-where
-    Iter: IntoIterator<Item = Item>,
-    Item: Into<OsString> + Clone, {
 
-    fn run(&self, itr: Iter) -> Result<(), Box<dyn Error>>;
+// Instead of a generic trait, define associated types.
+//
+// pub(crate) trait Command<Iter, Item>
+// where
+//     Iter: IntoIterator<Item = Item>,
+//     Item: Into<OsString> + Clone, {
+
+//     fn run(&self, itr: Iter) -> Result<(), Box<dyn Error>>;
+// }
+
+// problem: It's not clear if/how you can supply these types when a generic type implements the trait.
+//
+pub(crate) trait Command {
+    type Iter: IntoIterator<Item = Self::Item>;
+    type Item: Into<OsString> + Clone;
+
+    fn run(&self, itr: Self::Iter) -> Result<(), Box<dyn Error>>;
 }
 
 pub(super) struct ClapCommand<Options, BuildFn, ParseFn, RunFn>
