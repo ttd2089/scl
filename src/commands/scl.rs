@@ -1,39 +1,47 @@
-use std::error::Error;
-use std::ffi::OsString;
+use std::{error::Error, ffi::OsString, ops::Deref, sync::Arc, vec};
 
-use super::{Command, ClapCommand, version, changelog};
-
-pub(super) struct SclOptions {
-    pub(super) base: String,
-    pub(super) target: String,
-}
-
-impl SclOptions {
-    pub(super) fn new(base: &str, target: &str) -> SclOptions {
-        SclOptions{ base: base.to_string(), target: target.to_string() }
-    }
-}
+use crate::cwrap::{Command, Cwrapper};
 
 pub(crate) fn new<Iter, Item>() -> Box<dyn Command<Iter, Item>>
 where
     Iter: IntoIterator<Item = Item>,
-    Item: Into<OsString> + Clone, {
-        
-    Box::new(ClapCommand::new(
-        build_scl_clap_command,
+    Item: Into<OsString> + Clone,
+{
+    Box::new(Cwrapper::new(
+        build_scl_command,
         parse_scl_options,
-        run_scl_command))
+        build_scl_context,
+        Some(do_scl),
+    ))
 }
 
-fn build_scl_clap_command() -> clap::Command {
+fn build_scl_command() -> clap::Command {
     clap::command!()
-        .arg(clap::arg!(--base <BASE_REF> "The git ref to compare the target ref against.").required(true))
-        .arg(clap::arg!(--target <TARGET_REF> "The git ref to generate release info for.").default_value("HEAD"))
+        .arg(
+            clap::arg!(--base <BASE_REF> "The git ref to compare the target ref against.")
+                .required(true),
+        )
+        .arg(
+            clap::arg!(--target <TARGET_REF> "The git ref to generate release info for.")
+                .default_value("HEAD"),
+        )
         .propagate_version(true)
         .arg_required_else_help(true)
         .max_term_width(100)
-        .subcommand(version::build_subcommand())
-        .subcommand(changelog::build_subcommand())
+}
+
+struct SclOptions {
+    pub base: String,
+    pub target: String,
+}
+
+impl SclOptions {
+    fn new(base: &str, target: &str) -> SclOptions {
+        SclOptions {
+            base: base.to_string(),
+            target: target.to_string(),
+        }
+    }
 }
 
 fn parse_scl_options(matches: &clap::ArgMatches) -> SclOptions {
@@ -42,37 +50,72 @@ fn parse_scl_options(matches: &clap::ArgMatches) -> SclOptions {
     SclOptions::new(&base, &target)
 }
 
-fn run_scl_command(opts: &SclOptions, matches: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
+struct SclContext<'a> {
+    repo: git2::Repository,
+    commits: Vec<conventional::Commit<'a>>,
+}
 
+fn build_scl_context<'a>(opts: SclOptions) -> Result<SclContext<'a>, Box<dyn Error>> {
+    // let repo = Arc::new(git2::Repository::discover(".")?);
     let repo = git2::Repository::discover(".")?;
     let mut revwalk = repo.revwalk()?;
     revwalk.push_range(&format!("{}..{}", opts.base, opts.target))?;
 
-    let commits = revwalk
-        .collect::<Result<Vec<git2::Oid>, _>>()?
-        .iter()
-        .map(|x| repo.find_commit(*x))
-        .collect::<Result<Vec<git2::Commit>, _>>()?;
+    let oids = revwalk.collect::<Result<Vec<git2::Oid>, _>>()?;
+    // let mut commits = Vec::new();
+    for oid in oids {
+        repo.find_commit(oid)?;
+        // repo.find_commit(oid);
+    }
 
-    let conventional_commits = commits
-        .iter()
-        .map(|x| match x.message() {
-            // A subject with trailing newlines is technically not a valid conventional commit
-            // because it has an empty body instead of no body -- we can be more lenient than that.
-            Some(x) => Ok(x.trim_end_matches(&['\r', '\n'])),
-            _ => Err(format!("invalid commit {}: message it not a valid UTF-8 atring", x.id())),
-        })
-        .collect::<Result<Vec<&str>, _>>()?
-        .iter()
-        .filter_map(|x| conventional::Commit::new(x).ok())
-        .collect();
-    
-    match matches.subcommand() {
-        Some(("version", matches)) => version::run(matches, &conventional_commits),
-        Some(("changelog", matches)) => changelog::run(matches, &conventional_commits),
-        Some((x, _)) => unreachable!("unknwon subcommand '{}'", x),
-        None => unreachable!("no subcommand given"),
+    let mut conv_commits = vec!();
+
+    let mut ctx = SclContext {
+        repo,
+        commits: conv_commits,
     };
 
+    // let mut messages = Vec::new();
+
+    // for commit in commits {
+    //     match commit.message() {
+    //         Some(x) => messages.push(Box::new(x.to_owned())),
+    //             // .push(Box::new(conventional::Commit::new(x.to_owned()).unwrap())),
+    //         _ => {
+    //             return Err(format!(
+    //                 "invalid commit {}: message it not a valid UTF-8 atring",
+    //                 commit.id()
+    //             )
+    //             .into())
+    //         }
+    //     }
+    // }
+
+    // ctx.commits.push(Box::new(conventional::Commit::new(&messages[0])?.to_owned()));
+    Ok(ctx)
+
+    // let commits = revwalk
+    //     .map(move |x| match x {
+    //         Ok(oid) => repo.find_commit(oid),
+    //         Err(e) => Err(e),
+    //     })
+    //     .collect::<Result<Vec<git2::Commit>, _>>()?;
+
+    // let conventional_commits = commits
+    //     .iter()
+    //     .map(move |x| match x.message() {
+    //         // A subject with trailing newlines is technically not a valid conventional commit
+    //         // because it has an empty body instead of no body -- we can be more lenient than that.
+    //         Some(x) => Ok(x.trim_end_matches(&['\r', '\n'])),
+    //         _ => Err(format!("invalid commit {}: message it not a valid UTF-8 atring", x.id())),
+    //     })
+    //     .collect::<Result<Vec<&str>, _>>()?
+    //     .iter()
+    //     .filter_map(|x| conventional::Commit::new(x).ok())
+    // .collect();
+}
+
+fn do_scl(context: &SclContext) -> Result<(), Box<dyn Error>> {
+    // println!("{:#?}", context.commits);
     Ok(())
 }
