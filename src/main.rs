@@ -1,108 +1,54 @@
-mod github;
+mod git;
+mod options;
 
-use std::collections::HashMap;
+use std::{env::args_os, error::Error};
 
-use clap::{arg, command, Command};
-use conventional::Simple;
-use reqwest::Error;
+use git::{get_conventional_commits, ConventionalCommit};
+use options::get_options;
+use serde::Serialize;
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let matches = command!()
-        // todo: support detecting current repo and/or using a config file
-        .arg(arg!(--owner <OWNER> "The owner of the GitHub repo").required(true))
-        .arg(arg!(--repo <REPO> "The name of the GitHub repo").required(true))
-        .arg(arg!(--base <RELEASE_TAG> "The tag name of the GitHub release to use as a base (defaults to latest)"))
-        .arg(arg!(--target <REF> "The git ref to generate release info for").default_value("HEAD"))
-        // todo: investigate the impact of propagate_version -- do subcommands need to have versions?
-        .subcommand(
-            Command::new("version")
-                .about("Generates the version string")
-        )
-        .subcommand(
-            Command::new("changelog")
-                .about("Generates the changelog")
-        )
-        .arg_required_else_help(true)
-        .max_term_width(100)
-        .help_expected(true)
-        .get_matches();
+fn main() {
+    run().unwrap_or_else(|e| eprintln!("{}", e));
+}
 
-    let client = reqwest::Client::new();
-    let context = github::Context::new(
-        &client,
-        matches.get_one::<String>("owner").unwrap(),
-        matches.get_one::<String>("repo").unwrap(),
-    );
+fn run() -> Result<(), Box<dyn Error>> {
+    let opts = get_options(args_os())?;
+    let changes = get_conventional_commits(&opts)?;
+    let version = get_next_version(&opts.base_version, &changes);
 
-    let release = matches
-        .get_one::<String>("base")
-        .map_or("latest".into(), |x| format!("tags/{}", x));
+    #[derive(Serialize)]
+    struct Output<'a> {
+        pub version: &'a str,
+        pub changes: &'a Vec<ConventionalCommit>,
+    }
 
-    let release = context.get_release(&release).await?;
+    let output = serde_json::to_string(&Output {
+        version: &version.to_string(),
+        changes: &changes,
+    })?;
 
-    let comparison = context
-        .compare_commits(
-            &release.target_commitish,
-            matches.get_one::<String>("target").unwrap(),
-        )
-        .await?;
-
-    let commits = comparison
-        .commits
-        .iter()
-        .filter_map(|x| conventional::Commit::new(&x.commit.message).ok())
-        .filter(is_relevant_commit)
-        .collect::<Vec<_>>();
-
-    match matches.subcommand() {
-        Some(("version", _)) => println!("You typed version :D"),
-        Some(("changelog", _)) => print_changelog(&commits),
-        _ => unreachable!("Oh nooo"),
-    };
+    println!("{}", output);
 
     Ok(())
 }
 
-fn is_relevant_commit(commit: &conventional::Commit) -> bool {
-    commit.type_() == "feat" || commit.type_() == "fix"
-}
-
-fn print_changelog(commits: &Vec<conventional::Commit>) {
-    let mut categories: HashMap<String, Vec<&conventional::Commit>> = HashMap::new();
-
-    for commit in commits {
-        let key = if commit.breaking() {
-            "breaking".to_owned()
-        } else {
-            commit.type_().to_owned()
-        };
-
-        categories
-            .entry(key)
-            .and_modify(|x| x.push(commit))
-            .or_insert_with(Vec::new);
+fn get_next_version(
+    base_version: &semver::Version,
+    commits: &Vec<ConventionalCommit>,
+) -> semver::Version {
+    // todo: Use configuration to map additional types for version changes.
+    if base_version.major > 0 && commits.iter().any(|x| x.breaking) {
+        return semver::Version::new(base_version.major + 1, 0, 0);
     }
-
-    for (category, title) in [
-        ("breaking", "BREAKING CHANGES"),
-        ("feat", "Features"),
-        ("fix", "Bug Fixes"),
-    ] {
-        print_category(&categories, category, title);
-        println!();
+    if commits.iter().any(|x| x.type_ == "feat") {
+        return semver::Version::new(base_version.major, base_version.minor + 1, 0);
     }
-}
-
-fn print_category(
-    hash_map: &HashMap<String, Vec<&conventional::Commit>>,
-    category_name: &str,
-    title: &str,
-) {
-    if let Some(breaking) = hash_map.get(category_name) {
-        println!("{}:\n", title);
-        for commit in breaking.iter() {
-            println!("{subject}", subject = commit.description())
-        }
+    if commits.iter().any(|x| x.type_ == "fix") {
+        return semver::Version::new(
+            base_version.major,
+            base_version.minor,
+            base_version.patch + 1,
+        );
     }
+    return base_version.to_owned();
 }
